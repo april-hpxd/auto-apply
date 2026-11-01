@@ -44,6 +44,12 @@ scripts/scout.js ──► POST /api/jobs/bulk ──► job_queue (dedup + poli
 No API keys, no OAuth, no external accounts. The server, database (SQLite
 file), resume storage, and UI are all local.
 
+Optionally, [Ollama](https://ollama.com) provides local AI for resume/cover-
+letter drafting and flagging ambiguous screening questions for review —
+`ollama pull llama3.1:8b` and `npm run doctor` will confirm it's ready. It is
+never used for eligibility, immigration, or demographic yes/no answers; those
+stay on the deterministic policy in `scripts/lib/answers.js`.
+
 **Installing Node 22** if you don't have it:
 
 ```bash
@@ -121,6 +127,29 @@ The appliers need one of these (doctor tells you which you have):
   no Chrome is listening on the CDP port. A persistent profile is kept in
   `.apply-browser-profile/` so Greenhouse's device trust survives between runs.
 
+## Generating tailored resumes & cover letters (optional)
+
+Resume content comes entirely from a bullet bank YOU write — nothing is
+invented. The AI (Ollama) only selects and ranks which of your existing
+bullets are most relevant to a given job; it never adds experience that
+isn't already in the bank.
+
+```bash
+node scripts/generate.js --init-bullets
+# edit data/resume_bullets.json with YOUR real experience, then:
+node scripts/generate.js --company "Acme" --role-title "Data Scientist Intern" \
+  [--description-file posting.txt] [--profile-id N] [--no-cover-letter]
+```
+
+Writes `generated/<Company>-<Role>/{resume.pdf,cover_letter.txt}` — both are
+**drafts for you to review**. Nothing here is auto-attached to an
+application; if you're happy with a generated resume, upload it as your
+profile's resume in the web UI before applying with it. The cover letter
+draft is grounded only in your bullet bank and the job's own title/
+description/company — it never mentions visa/sponsorship/immigration status.
+Without Ollama running, bullet selection falls back to a deterministic
+keyword match (no AI) and cover-letter drafting is skipped.
+
 ## Applying
 
 Fill the queue and apply:
@@ -140,6 +169,26 @@ node scripts/apply.js roles.json --prep    # Lever: fill + leave tab open for ma
 
 Per-role `overrides.answers` (`[{ "re": "label regex", "val": "answer" }]`)
 handle company-specific questions; `"val": ""` means "leave that field blank".
+
+### Continuous mode (dashboard Start/Pause/Stop)
+
+The web UI's Dashboard has **Start**, **Pause**, and **Stop** controls for a
+background runner that repeatedly claims + fills + submits pending roles
+(checking every 2 minutes) without you re-running the CLI by hand. It's pure
+orchestration around the exact same `apply.js` used above — no new submission
+logic.
+
+- **Start** — begins the loop (and discovery via the existing scout
+  auto-rescrape keeps the queue fed independently).
+- **Pause** — the loop stays on but stops claiming new roles; any in-flight
+  apply finishes first. Resume to pick back up.
+- **Stop** — ends the loop entirely and terminates any in-flight apply
+  process (and its browser) immediately.
+
+CAPTCHAs, unsupported forms, and ambiguous questions are never auto-resolved
+in continuous mode either — they land as `failed`/`skipped` queue rows (same
+fail-safe behavior as manual `apply.js` runs) and the Dashboard flags them
+under "needs human review."
 
 **Always dry-run a new company first.** Many ATS tenants allow only 1–3
 applications per person, ever — a badly-filled submit burns the slot
@@ -198,6 +247,13 @@ continues.
   the web UI (resume + work-authorization questions); this gate is deliberate.
 - **`connectOverCDP failed` and no bundled Chromium** — run
   `npx playwright install chromium`, or launch Chrome per [Browser](#browser).
+- **Bundled Chromium fails with `spawn UNKNOWN` / "side-by-side configuration
+  is incorrect" (seen on some Windows setups)** — this is specific to the
+  Playwright-downloaded Chrome-for-Testing binary launching in headed mode,
+  not your code or real Chrome. `npm run doctor` detects it. Workaround: use
+  real Chrome with CDP instead (see [Browser](#browser) Option A) — it's the
+  recommended option anyway and is unaffected. `npx playwright install
+  chromium --force` is worth trying first but may not resolve it.
 - **Anything else** — `npm run doctor` first; it names the missing piece.
 
 ## Layout
@@ -209,17 +265,25 @@ server/
   routes/profiles.js     # profiles + resume upload + intake gating
   routes/jobs.js         # queue, dedup, claim protocol, fences
   routes/applications.js # submitted-application tracker
+  routes/runner.js        # dashboard Start/Pause/Stop controls for continuous mode
   services/scout_watcher.js  # auto-rescrape when the queue drains
+  services/apply_runner.js   # continuous apply loop (spawns apply.js, no new submission logic)
 scripts/
   setup.js               # one-shot fresh-machine setup (npm run setup)
   doctor.js              # environment self-check (npm run doctor)
   scout.js               # config-driven role discovery (Ashby + Greenhouse APIs)
   apply.js               # unified claim→fill→submit runner
+  generate.js            # tailored resume PDF + cover-letter draft generator
   lib/api.js             # fence client (all DB access goes through the API)
   lib/answers.js         # profile-driven answer policy (shared by all ATSes)
   lib/ashby.js           # Ashby form engine
   lib/greenhouse.js      # Greenhouse form engine
   lib/lever.js           # Lever form engine
+  lib/ollama.js          # local Ollama client (drafting/classification only)
+  lib/bullets.js         # user-curated resume bullet bank (data/resume_bullets.json)
+  lib/tailor.js          # selects/ranks existing bullets per job (no fabrication)
+  lib/resume_pdf.js      # renders a resume PDF from selected bullets
+  lib/coverletter_gen.js # drafts a cover letter grounded in the bullet bank
 client/src/pages/        # Onboarding, Dashboard, Applications, Profile, Login
 config/boards.json       # scout board list + filters
 test/                    # API tests: intake gating, dedup, claim protocol

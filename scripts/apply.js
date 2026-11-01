@@ -98,11 +98,23 @@ async function connectBrowser() {
     // trusts a device after the first code, so reusing one profile dir means
     // verifying once.
     const profileDir = process.env.BROWSER_PROFILE_DIR || path.join(__dirname, '..', '.apply-browser-profile');
-    const ctx = await chromium.launchPersistentContext(profileDir, {
-      headless: false,
-      viewport: null,
-      args: ['--disable-blink-features=AutomationControlled', '--start-maximized'],
-    });
+    let ctx;
+    try {
+      ctx = await chromium.launchPersistentContext(profileDir, {
+        headless: false,
+        viewport: null,
+        args: ['--disable-blink-features=AutomationControlled', '--start-maximized'],
+      });
+    } catch (launchErr) {
+      if (/side-by-side/i.test(launchErr.message)) {
+        throw new Error(
+          'Bundled Chromium failed to launch (Windows "side-by-side configuration is incorrect" — ' +
+          'a known issue with this Chrome-for-Testing build, not your setup). Run "npm run doctor" for details. ' +
+          'Workaround: launch real Chrome with CDP instead (README "Browser" Option A).'
+        );
+      }
+      throw launchErr;
+    }
     return { browser: ctx.browser(), ctx, persistent: true };
   }
 }

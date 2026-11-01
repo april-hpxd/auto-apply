@@ -67,17 +67,47 @@ async function main() {
   } catch { /* not running */ }
   if (!cdpUp) warn(`no Chrome listening on CDP :${CDP_PORT}`, 'see README "Browser" for the launch command (optional if the bundled Chromium below is installed)');
 
-  // Bundled Chromium?
+  // Bundled Chromium? Check it actually LAUNCHES, not just that the files
+  // exist — a corrupted/incomplete download can pass the file-exists check
+  // but fail at launch (seen on Windows: "side-by-side configuration is
+  // incorrect" from a Chromium build missing its SxS assembly layout).
   let bundledOk = false;
   if (playwrightOk) {
     try {
       const { chromium } = require('playwright');
       const exe = chromium.executablePath();
-      if (exe && fs.existsSync(exe)) { bundledOk = true; ok('Playwright bundled Chromium downloaded'); }
-    } catch { /* fall through */ }
-    if (!bundledOk) warn('Playwright bundled Chromium not downloaded', 'npx playwright install chromium');
+      if (exe && fs.existsSync(exe)) {
+        // headless:false on purpose — apply.js's fallback browser runs headed
+        // (launchPersistentContext), and some Windows setups can launch this
+        // binary headless but fail headed with a "side-by-side configuration
+        // is incorrect" error. A headless-only check would miss that.
+        const browser = await chromium.launch({ headless: false, timeout: 15000 });
+        await browser.close();
+        bundledOk = true;
+        ok('Playwright bundled Chromium downloaded and launches (headed)');
+      } else {
+        warn('Playwright bundled Chromium not downloaded', 'npx playwright install chromium');
+      }
+    } catch (e) {
+      const msg = e.message.split('\n')[0];
+      const sxsHint = /side-by-side/i.test(e.message)
+        ? ' This looks like a known Windows issue with this Chrome-for-Testing build (not your code) — real Chrome via CDP is unaffected and is the recommended option anyway (README "Browser").'
+        : '';
+      warn(
+        `Playwright bundled Chromium downloaded but FAILED to launch headed (${msg}).${sxsHint}`,
+        'try: npx playwright install chromium --force   — if that doesn\'t fix it, launch real Chrome with CDP instead (README "Browser"); the appliers prefer CDP automatically whenever it is reachable'
+      );
+    }
   }
-  if (!cdpUp && !bundledOk) fail('NO browser available — the appliers cannot run', 'either launch Chrome with CDP (README "Browser") or run: npx playwright install chromium');
+  if (!cdpUp && !bundledOk) fail('NO working browser available — the appliers cannot run', 'either launch Chrome with CDP (README "Browser") or run: npx playwright install chromium --force');
+
+  console.log('\nOllama (optional — resume/cover-letter drafting)\n─────────────────────────────────────────────────');
+  try {
+    const ollama = require('./lib/ollama');
+    const status = await ollama.checkAvailable();
+    if (status.available) ok(`Ollama reachable at ${ollama.OLLAMA_URL}, model ${ollama.OLLAMA_MODEL} ready`);
+    else warn(`Ollama not ready: ${status.reason}`, `install from https://ollama.com, run "ollama serve", then "ollama pull ${ollama.OLLAMA_MODEL}"`);
+  } catch (e) { warn(`could not check Ollama: ${e.message}`); }
 
   console.log('\nServer & profile\n────────────────');
 

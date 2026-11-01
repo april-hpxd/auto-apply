@@ -4,6 +4,7 @@ client/dist/
 data/
 uploads/
 screenshots/
+generated/
 .env
 .DS_Store
 *.log

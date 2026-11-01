@@ -42,6 +42,7 @@ app.get('/api/health', (req, res) => {
 app.use('/api/profiles', authMiddleware, require('./routes/profiles').router);
 app.use('/api/jobs', authMiddleware, require('./routes/jobs'));
 app.use('/api/applications', authMiddleware, require('./routes/applications'));
+app.use('/api/runner', authMiddleware, require('./routes/runner'));
 
 app.use((err, req, res, next) => {
   console.error('unhandled request error', req.method, req.path, err);
@@ -60,3 +61,10 @@ app.listen(PORT, () => {
   console.log(`auto-apply server on :${PORT} (password protected: ${!!process.env.APP_PASSWORD})`);
   startScoutWatcher();
 });
+
+// Never leave a spawned apply.js (and its Playwright browser) running after
+// the server itself goes down.
+const { stopRunner } = require('./services/apply_runner');
+for (const sig of ['SIGINT', 'SIGTERM']) {
+  process.on(sig, () => { stopRunner(); process.exit(0); });
+}

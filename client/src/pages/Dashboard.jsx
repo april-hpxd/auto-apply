@@ -4,17 +4,20 @@ import { apiFetch } from '../api.js';
 export default function Dashboard({ profile }) {
   const [jobs, setJobs] = useState([]);
   const [pauseState, setPauseState] = useState(null);
+  const [runnerState, setRunnerState] = useState(null);
   const [busy, setBusy] = useState(false);
   const [filter, setFilter] = useState('pending');
 
   async function refresh() {
     try {
-      const [jr, pr] = await Promise.all([
+      const [jr, pr, rr] = await Promise.all([
         apiFetch(`/api/jobs?profile_id=${profile.id}`),
         apiFetch('/api/jobs/paused'),
+        apiFetch('/api/runner/status'),
       ]);
       setJobs(await jr.json());
       setPauseState(await pr.json());
+      setRunnerState(await rr.json());
     } catch { /* transient */ }
   }
 
@@ -31,6 +34,34 @@ export default function Dashboard({ profile }) {
     setBusy(false);
   }
 
+  async function startRunner() {
+    if (!window.confirm(
+      'This starts LIVE applying: the runner will claim, fill, and SUBMIT real applications ' +
+      'from your queue, continuously, until you click Stop. Run a dry run first if you haven\'t ' +
+      'already. Continue?'
+    )) return;
+    setBusy(true);
+    await apiFetch('/api/runner/start', { method: 'POST', body: JSON.stringify({ profile_id: profile.id }) }).catch(() => {});
+    await refresh();
+    setBusy(false);
+  }
+
+  async function stopRunner() {
+    setBusy(true);
+    await apiFetch('/api/runner/stop', { method: 'POST' }).catch(() => {});
+    await refresh();
+    setBusy(false);
+  }
+
+  async function dryRun() {
+    setBusy(true);
+    await apiFetch('/api/runner/dry-run', { method: 'POST', body: JSON.stringify({ profile_id: profile.id }) }).catch(() => {});
+    await refresh();
+    setBusy(false);
+  }
+
+  const needsReview = jobs.filter((j) => j.status === 'failed' && j.submitted_at);
+
   const counts = jobs.reduce((acc, j) => { acc[j.status] = (acc[j.status] || 0) + 1; return acc; }, {});
   const shown = jobs.filter((j) => (filter === 'all' ? true : j.status === filter));
 
@@ -46,16 +77,51 @@ export default function Dashboard({ profile }) {
         ))}
       </div>
 
-      <div className="card" style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-        <button className={'btn' + (pauseState?.paused ? '' : ' danger')} onClick={togglePause} disabled={busy || !pauseState}>
-          {pauseState?.paused ? 'Resume applying' : 'Pause applying'}
+      <div className="card" style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+        <button className="btn secondary" onClick={dryRun} disabled={busy || runnerState?.running}>
+          Dry run queue
         </button>
+        {!runnerState?.enabled ? (
+          <button className="btn danger" onClick={startRunner} disabled={busy || !runnerState}>Start (live)</button>
+        ) : (
+          <>
+            <button className={'btn' + (pauseState?.paused ? '' : ' secondary')} onClick={togglePause} disabled={busy || !pauseState}>
+              {pauseState?.paused ? 'Resume' : 'Pause'}
+            </button>
+            <button className="btn danger" onClick={stopRunner} disabled={busy}>Stop</button>
+          </>
+        )}
         <span className="muted small">
-          {pauseState?.paused
-            ? 'Paused — apply sessions stop after their current role.'
-            : 'Running. Start an apply session with: node scripts/apply.js --queue'}
+          {!runnerState?.enabled
+            ? 'Stopped. "Dry run queue" fills forms without submitting — do this first. "Start (live)" claims + fills + submits, continuously, until stopped.'
+            : pauseState?.paused
+              ? 'Paused — the runner stays on but will not claim new roles until resumed.'
+              : runnerState?.running
+                ? 'Running an apply session now.'
+                : 'Running — waiting for pending roles (checks every 2 min).'}
         </span>
       </div>
+
+      {runnerState?.dryRunResult && (
+        <div className="card">
+          <strong>Dry run: {runnerState.dryRunResult.status}</strong>
+          {runnerState.dryRunResult.tail && (
+            <pre className="muted small" style={{ whiteSpace: 'pre-wrap', maxHeight: 220, overflow: 'auto' }}>
+              {runnerState.dryRunResult.tail}
+            </pre>
+          )}
+        </div>
+      )}
+
+      {needsReview.length > 0 && (
+        <div className="card" style={{ borderColor: '#d97706' }}>
+          <strong>{needsReview.length} role(s) need human review</strong>
+          <div className="muted small">
+            Submit was clicked but success wasn't confirmed (e.g. CAPTCHA, unsupported form, or an
+            unexpected page) — these are NOT retried automatically. Check the Notes column below.
+          </div>
+        </div>
+      )}
 
       <div className="card">
         <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
