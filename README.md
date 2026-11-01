@@ -175,7 +175,13 @@ continues.
 ## Configuration
 
 - `config/boards.json` — which Ashby/Greenhouse boards to scout and the
-  title/location filters. Edit freely.
+  title/location filters. Edit freely. The default filters target
+  internships/entry-level roles in data science, CS, bioinformatics,
+  biotech, healthtech, and analytics (unlike a senior-SWE-only config,
+  `intern`/`new grad`/`analyst` are intentionally NOT disqualified).
+  When a posting's description explicitly states it won't sponsor a visa,
+  the scout annotates the queue row's `notes` instead of silently dropping
+  it — ambiguous cases are always surfaced, never guessed away.
 - `.env` — port, optional `APP_PASSWORD` (required in production), paths.
 - Multiple users on one server: every profile is isolated (own queue, own
   applications, own dedup). Scripts take `--profile-id N`; with one profile it

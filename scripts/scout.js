@@ -50,6 +50,18 @@ function shouldKeep(title) {
   return !!title && !DISQUALIFY.test(title) && RELEVANT.test(title);
 }
 
+// Best-effort "will not sponsor" detector, run against posting description
+// text when available. This NEVER drops a candidate — F-1/OPT eligibility is
+// too consequential to guess silently (same principle as answers.js: skip +
+// surface, don't fabricate). It only annotates notes so a human (or the
+// sponsorship-aware answer policy at apply time) can see it before applying.
+const NO_SPONSORSHIP_RE = /will not sponsor|does not sponsor|unable to sponsor|no (visa |work )?sponsorship( is)? (available|provided|offered)|not (able|eligible) to (provide|offer) (visa )?sponsorship|cannot sponsor|without sponsorship now or (in the future|ever)|must be (a )?(us citizen|authorized to work in the (us|united states) without (need for )?sponsorship)/i;
+
+function sponsorshipFlag(text) {
+  if (!text) return null;
+  return NO_SPONSORSHIP_RE.test(text) ? 'description mentions no visa sponsorship' : null;
+}
+
 function locationOk(loc) {
   if (!US_ONLY) return true;
   if (!loc) return true; // no location info — let a human judge at apply time
@@ -121,18 +133,35 @@ async function scoutAshbyBoard(slug) {
     if (!j.isListed) continue;
     if (!shouldKeep(j.title)) continue;
     if (US_ONLY && !ashbyLocationOk(j)) continue;
+    const sponsorNote = sponsorshipFlag(j.descriptionPlain);
     out.push({
       company: companyName,
       role_title: j.title,
       role_url: j.jobUrl || `https://jobs.ashbyhq.com/${slug}/${j.id}`,
       ats: 'ashby',
-      notes: `scouted via ashby posting api (${j.location || 'no location'})`,
+      notes: `scouted via ashby posting api (${j.location || 'no location'})` + (sponsorNote ? ` | ${sponsorNote}` : ''),
     });
   }
   return out;
 }
 
 // ── Greenhouse boards API ───────────────────────────────────────────────────
+// The list endpoint has no description text; fetch per-job detail (only for
+// candidates that already passed title/location filters) to check for
+// explicit no-sponsorship language.
+async function fetchGreenhouseDescription(token, jobId) {
+  try {
+    const r = await fetch(`https://boards-api.greenhouse.io/v1/boards/${encodeURIComponent(token)}/jobs/${jobId}?content=true`, {
+      signal: AbortSignal.timeout(12000),
+    });
+    if (!r.ok) return null;
+    const data = await r.json();
+    return (data.content || '').replace(/<[^>]+>/g, ' ');
+  } catch {
+    return null;
+  }
+}
+
 async function scoutGreenhouseBoard(token, companyName) {
   let data;
   try {
@@ -149,12 +178,14 @@ async function scoutGreenhouseBoard(token, companyName) {
   for (const j of data.jobs || []) {
     if (!shouldKeep(j.title)) continue;
     if (US_ONLY && !locationOk(j.location?.name || '')) continue;
+    const description = await fetchGreenhouseDescription(token, j.id);
+    const sponsorNote = sponsorshipFlag(description);
     out.push({
       company: companyName,
       role_title: j.title,
       role_url: j.absolute_url,
       ats: 'greenhouse',
-      notes: `scouted via greenhouse boards api (${j.location?.name || 'no location'})`,
+      notes: `scouted via greenhouse boards api (${j.location?.name || 'no location'})` + (sponsorNote ? ` | ${sponsorNote}` : ''),
     });
   }
   return out;
