@@ -105,7 +105,7 @@ async function main() {
       if (res.status === 404) {
         warn('no profile yet', 'open the web UI and complete the onboarding wizard');
       } else if (res.status === 401) {
-        warn('server is password-protected; set APP_PASSWORD in the environment for scripts', 'export APP_PASSWORD=...  (must match the server\'s .env)');
+        warn('server is password-protected; set APP_PASSWORD in the environment for scripts', 'set it in your shell (export APP_PASSWORD=... on macOS/Linux, $env:APP_PASSWORD="..." in PowerShell) — must match the server\'s .env');
       } else if (res.ok) {
         const p = await res.json();
         if (p.intake?.complete && p.intake_completed_at) ok(`profile "${p.first_name} ${p.last_name}" ready (intake complete)`);

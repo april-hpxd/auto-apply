@@ -22,6 +22,7 @@
 
 const path = require('path');
 const fs = require('fs');
+const os = require('os');
 
 const SHOT_DIR = process.env.SHOT_DIR || path.join(__dirname, '..', '..', 'screenshots');
 
@@ -231,7 +232,7 @@ async function isSelect(page, fid) {
  * @param role    { company, title|role_title, url, overrides?: { answers?: [{re, flags?, val}] } }
  * @param policy  answer policy from lib/answers.buildPolicy(profile)
  * @param opts    { dryRun?, beforeSubmit?, codeFile? } — codeFile is the
- *                security-code drop file (default /tmp/gh_seccode.txt)
+ *                security-code drop file (default: <tmpdir>/gh_seccode.txt)
  * @returns { company, title, url, status: 'done'|'failed'|'dry_run', note, qa,
  *            submitClicked, warnings: [], shot? }
  */
@@ -705,7 +706,7 @@ async function applyGreenhouseRole(page, role, policy, opts = {}) {
     if (secCode) {
       // Email-verification gate: Greenhouse emailed a code to the applicant.
       // Poll the drop file — the user (or an outer tool) writes the code there.
-      const CODE_FILE = opts.codeFile || process.env.GH_CODE_FILE || '/tmp/gh_seccode.txt';
+      const CODE_FILE = opts.codeFile || process.env.GH_CODE_FILE || path.join(os.tmpdir(), 'gh_seccode.txt');
       try { fs.unlinkSync(CODE_FILE); } catch { /* absent is fine */ }
       console.log(`SECURITY_CODE_REQUIRED — check ${profile.email} for the code and write it to ${CODE_FILE} (polling up to 360s)`);
       let code = null;

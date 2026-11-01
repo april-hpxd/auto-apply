@@ -6,12 +6,12 @@
     "setup": "node scripts/setup.js",
     "doctor": "node scripts/doctor.js",
     "dev": "concurrently \"npm run server\" \"npm run client\"",
-    "server": "NODE_NO_WARNINGS=1 node --watch server/index.js",
+    "server": "cross-env NODE_NO_WARNINGS=1 node --watch server/index.js",
     "client": "cd client && npm run dev",
     "install:all": "npm install && cd client && npm install",
     "build": "cd client && npm install && npm run build",
-    "start": "NODE_ENV=production NODE_NO_WARNINGS=1 node server/index.js",
-    "test": "NODE_NO_WARNINGS=1 node --test --test-concurrency=1 \"test/**/*.test.js\"",
+    "start": "cross-env NODE_ENV=production NODE_NO_WARNINGS=1 node server/index.js",
+    "test": "cross-env NODE_NO_WARNINGS=1 node --test --test-concurrency=1 \"test/**/*.test.js\"",
     "scout": "node scripts/scout.js",
     "apply": "node scripts/apply.js"
   },
@@ -24,6 +24,7 @@
   },
   "devDependencies": {
     "concurrently": "^8.2.2",
+    "cross-env": "^7.0.3",
     "playwright": "^1.59.1"
   },
   "engines": {

@@ -37,7 +37,7 @@ scripts/scout.js ──► POST /api/jobs/bulk ──► job_queue (dedup + poli
 |---|---|---|
 | **Node.js ≥ 22.5** | the DB layer uses the built-in `node:sqlite` module | `node --version` |
 | **npm** (ships with Node) | installs everything else | `npm --version` |
-| **macOS or Linux** | shell-style npm scripts and default paths; on Windows use WSL | — |
+| **macOS, Linux, or Windows 11** | npm scripts use `cross-env` and Node APIs for OS-specific paths — no WSL required | — |
 | **~500 MB disk + internet** during setup | npm packages + the Playwright Chromium download | — |
 | **A browser for the appliers** (either one works, see [Browser](#browser)) | Playwright drives it through the ATS forms | `npm run doctor` |
 
@@ -52,7 +52,9 @@ curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash
 nvm install 22 && nvm use 22
 ```
 
-or download from https://nodejs.org (choose 22 LTS or newer).
+or download from https://nodejs.org (choose 22 LTS or newer). On Windows,
+the official installer from nodejs.org works fine; `nvm-windows` is an
+alternative if you need to switch Node versions.
 
 ## Setup on a fresh machine
 
@@ -109,6 +111,11 @@ The appliers need one of these (doctor tells you which you have):
   google-chrome --remote-debugging-port=9222 --user-data-dir="$HOME/.chrome-debug-profile"
   ```
 
+  ```powershell
+  # Windows (PowerShell)
+  & "C:\Program Files\Google\Chrome\Application\chrome.exe" --remote-debugging-port=9222 --user-data-dir="$env:USERPROFILE\.chrome-debug-profile"
+  ```
+
 - **Option B — the bundled Playwright Chromium** (installed by `npm run
   setup`; nothing to launch). The appliers fall back to it automatically when
   no Chrome is listening on the CDP port. A persistent profile is kept in
@@ -142,8 +149,10 @@ permanently. The dry run fills everything, screenshots the form
 ### Greenhouse email verification
 
 Some Greenhouse boards email a security code after submit. The applier pauses
-and polls `/tmp/gh_seccode.txt` (configurable via `GH_CODE_FILE`) — paste the
-code from your inbox into that file and it continues.
+and polls a drop file in your OS temp directory, `gh_seccode.txt` (on Windows
+typically `%LOCALAPPDATA%\Temp\gh_seccode.txt`; configurable via
+`GH_CODE_FILE`) — paste the code from your inbox into that file and it
+continues.
 
 ## Safety properties (inherited from hard experience — don't weaken)
 
@@ -220,5 +229,9 @@ npm test                 # run the API test suite
 npm run build
 NODE_ENV=production APP_PASSWORD=... npm start   # serves API + built UI on :3001
 ```
+
+(On Windows PowerShell: `$env:NODE_ENV="production"; $env:APP_PASSWORD="..."; npm start`.
+`npm start` itself already sets `NODE_ENV=production` via `cross-env`, so
+`APP_PASSWORD` is the only variable you need to export.)
 
 Set `DB_PATH` and `UPLOADS_DIR` to a mounted volume when deploying.
